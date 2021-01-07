@@ -1,0 +1,6 @@
+.stack-work/
+.vscode/
+glut32.dll
+src/Obmapp
+stack.yaml.lock
+*~
