@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 38bcbc4f5dd8681bfeb0415ec62f57d1a794a31ab5b6ee69ed0661057b84c5ed
+-- hash: 994a7a5e8375d51e7dac5be4ce424e1677c756a5afa706cc16c10211ef8ea00f
 
 name:           bosu
 version:        0.1.0.0
@@ -65,7 +65,7 @@ executable bosu-exe
       Paths_bosu
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -O2
   build-depends:
       base >=4.7 && <5
     , bosu
