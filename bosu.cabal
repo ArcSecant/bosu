@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 994a7a5e8375d51e7dac5be4ce424e1677c756a5afa706cc16c10211ef8ea00f
+-- hash: dfe975ab0958aa3aa1d146002ba3a6dc8a1204bcbd7185a591486f454e1af490
 
 name:           bosu
 version:        0.1.0.0
@@ -51,6 +51,9 @@ library
     , containers
     , extra
     , gloss
+    , hgeometry
+    , hgeometry-combinatorial
+    , lens
     , megaparsec >=9.0.1
     , parser-combinators >=1.2.1
     , sdl2
@@ -72,6 +75,9 @@ executable bosu-exe
     , containers
     , extra
     , gloss
+    , hgeometry
+    , hgeometry-combinatorial
+    , lens
     , megaparsec >=9.0.1
     , parser-combinators >=1.2.1
     , sdl2
@@ -94,6 +100,9 @@ test-suite bosu-test
     , containers
     , extra
     , gloss
+    , hgeometry
+    , hgeometry-combinatorial
+    , lens
     , megaparsec >=9.0.1
     , parser-combinators >=1.2.1
     , sdl2

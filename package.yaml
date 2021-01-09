@@ -30,6 +30,9 @@ dependencies:
 - vector >= 0.12.1.2
 - sdl2
 - sdl2-mixer
+- hgeometry
+- hgeometry-combinatorial
+- lens
 
 library:
   source-dirs: src
