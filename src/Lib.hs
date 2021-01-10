@@ -4,34 +4,20 @@ module Lib where
 
 import Data.List
 import Control.Lens
+import Data.Ext
 import Data.Geometry hiding (Vector, head)
+import Data.Geometry.PolyLine
 import Graphics.Gloss
 import Graphics.Gloss.Data.Vector
 
 import qualified Data.Sequence as Seq
 import qualified Data.Geometry.BezierSpline as BS
 
--- placePoints :: Int -> [Float] -> [Float]
--- placePoints m pts = map f [0..m]
---     where f r = let
---             d = realToFrac (fromIntegral r)/(m-1)
---             i = case findIndex (> d) pts of
---                 Just a -> a
---                 Nothing -> 0
---             u = (d - pts !! i)/(pts !! (i + 1) - pts !! (i - 1))
---             t = ((fromIntegral i :: Float) + u)/(fromIntegral $ length pts - 1)
---             in pts !! (round t)
-
-makeBezier :: [Vector] -> BS.BezierSpline 1 2 Float
-makeBezier xs = BS.fromPointSeq $ Seq.fromList $ map (\(x, y) -> Point2 x y) xs
-
-getBezierPath :: Float -> [Vector] -> [Vector]
--- getBezierPath xs = map (\p -> (p ^. xCoord, p ^. yCoord)) $ BS.approximate 0.5 (makeBezier xs)
-getBezierPath l xs = map ((\p -> (p ^. xCoord, p ^. yCoord)) . BS.evaluate (makeBezier xs)) [0, min 0.1 (d/10/l) .. 1]
-    where d = dist (head xs) (last xs)
+distSqr :: Vector -> Vector -> Float
+distSqr (a1, b1) (a2, b2) = (a2 - a1) ** 2 + (b2 - b1) ** 2
 
 dist :: Vector -> Vector -> Float
-dist (a1, b1) (a2, b2) = sqrt $ (a2 - a1) ** 2 + (b2 - b1) ** 2
+dist a b = sqrt $ distSqr a b
 
 circumcircle :: Vector -> Vector -> Vector -> (Vector, Float)
 circumcircle (x1, y1) (x2, y2) (x3, y3) = let
@@ -45,25 +31,38 @@ reCenter :: Vector -> Vector
 reCenter (a, b) = (a - 256, b - 192)
 
 hCircle :: (Int, Int) -> Float -> Picture
-hCircle (x, y) r = Translate (fromIntegral x - 256) (fromIntegral y - 192) (Color cyan $ ThickCircle (r - 5) 7.5)
+hCircle (x, y) r = Translate (fromIntegral x - 256) (fromIntegral y - 192) (Color cyan $ ThickCircle (r - 2.5) 5)
 
 aCircle :: (Int, Int) -> Float -> Picture
 aCircle (x, y) r = Translate (fromIntegral x - 256) (fromIntegral y - 192) $ Color white $ ThickCircle r 2.5
 
 lineToCirc :: Vector -> Picture
-lineToCirc (a, b) = Translate a b (Color cyan $ circleSolid 40)
+lineToCirc (a, b) = Translate a b (Color cyan $ circleSolid 30)
 
-drawBezier :: Float -> [Vector] -> Picture
+makeBezier :: [[Vector]] -> [BS.BezierSpline 1 2 Float]
+makeBezier xxs = map (BS.fromPointSeq . Seq.fromList . map (\(x, y) -> Point2 x y)) xxs
+
+getBezierPath :: Float -> [[Vector]] -> [Vector]
+getBezierPath pLength xxs = case fromPoints (map ext bPath) of
+    Just path -> map ((\p -> (p ^. xCoord, p ^. yCoord)) . (\x -> interpolatePoly x path)) [0..(fromIntegral $ length bPath)]
+    -- [0,(pLength/150)..(fromIntegral $ length bPath)]
+    Nothing -> []
+    where
+        bPath = concat $ map (\x -> map (BS.evaluate x) [0,0.02..1]) $ makeBezier xxs
+
+getCirclePath :: Vector -> Vector -> Vector -> [Vector]
+getCirclePath a b c = let
+    (center , r) = circumcircle a b c 
+    (cX, cY) = center
+    (cpx, cpy) = (fst a - cX, snd a - cY)
+    angle = acos((distSqr a center + distSqr center c - distSqr a c)/(2 * dist a center * dist center c))
+    nodes = map (\x -> argV (cpx, cpy) + x * angle / 50) [0 .. 50]
+    xs = map (\x -> cX + r * cos x) nodes
+    ys = map (\x -> cY + r * sin x) nodes
+    in zip xs ys
+
+drawArc :: Vector -> Vector -> Vector  -> Picture
+drawArc a b c = Color cyan $ Pictures $ map lineToCirc $ getCirclePath a b c
+
+drawBezier :: Float -> [[Vector]] -> Picture
 drawBezier l ps = Color cyan $ Pictures $ map lineToCirc $ getBezierPath l ps
--- drawBezier :: Bezier -> Picture
--- drawBezier ps = Pictures [Color cyan $ Line $ map f $ getBezierPath ps, Color cyan $ Line $ map g $ getBezierPath ps]
---     where
---         f (a, b) = (a - 40, b - 40)
---         g (a, b) = (a + 40, b + 40)
-
-
--- test = do
---     display
---         (InWindow "Bézier" (600,600) (100,100))
---         white
---         (drawBezier [(0,0),(200,0)])
