@@ -1,5 +1,6 @@
-# bosu
+# :b:osu
 
-render osu beatmaps on haskell
+osu on haskell
+
 
 requires https://github.com/ArcSecant/obmapp

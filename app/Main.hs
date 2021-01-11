@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Main where
 
@@ -20,13 +21,31 @@ import Text.Megaparsec
 
 import Debug.Trace
 import Graphics.Gloss
-
-import Graphics.Gloss.Interface.IO.Animate
+import Graphics.Gloss.Interface.Pure.Game
+import Graphics.Gloss.Interface.Pure.Simulate
 
 import Lib
 
 data VHO = Vector HitObject
 type BInfo = (Float, [TimingPoint], [HitObject])
+
+data HitType = H300 | H100 | H50 | Miss | None deriving (Show)
+
+data BOsu = Game
+    -- Static
+    { allObjs :: [HitObject]
+    , timing :: [TimingPoint]
+    -- Changes
+    , elapsedTime :: Float
+    , cursorLoc :: (Float, Float)
+    , curSM :: Float
+    , curObjsToHit :: [HitObject]
+    , otherCircs :: [Picture]
+    , hitMiss :: (Float, Vector, HitType)
+    }
+
+windowDisplay :: Display
+windowDisplay = InWindow "BOsu" (1080, 720) (50, 50)
 
 audioPath = "C:\\Program Files (x86)\\osu!\\Songs\\1199834 Vickeblanka - Black Rover (TV Size)\\audio.mp3"
 mapPath = "C:\\Program Files (x86)\\osu!\\Songs\\1199834 Vickeblanka - Black Rover (TV Size)\\Vickeblanka - Black Rover (TV Size) (IOException) [Special].osu"
@@ -34,32 +53,42 @@ mapPath = "C:\\Program Files (x86)\\osu!\\Songs\\1199834 Vickeblanka - Black Rov
 audioPath' = "C:\\Program Files (x86)\\osu!\\Songs\\437683 Halozy - Kikoku Doukoku Jigokuraku\\Kikoku Doukoku Jigokuraku.mp3"
 mapPath' = "C:\\Program Files (x86)\\osu!\\Songs\\437683 Halozy - Kikoku Doukoku Jigokuraku\\Halozy - Kikoku Doukoku Jigokuraku (Hollow Wings) [Notch Hell].osu"
 
-sliderRate :: Float -> Float -> [TimingPoint] -> Float
-sliderRate curTime sm tps' = let tps = reverse $ filter (\x -> beatLength x <= 0) tps' in
-    sliderRate' tps
-    where sliderRate' ts = if null ts then 270*sm else if curTime*1000 >= (realToFrac $ offset (head ts)) then 270*(-100)*sm/(realToFrac $ beatLength (head ts)) else sliderRate' (tail ts)
-
 getSec :: HitObject -> Float
 getSec x = (fromIntegral $ time x) / 1000
 
-parseFile :: FilePath -> T.Text -> BInfo
+sliderRate :: Float -> Float -> [TimingPoint] -> Float
+sliderRate curTime sm tps' = let tps = reverse $ filter (\x -> beatLength x <= 0) tps' in
+    sliderRate' tps
+    where sliderRate' ts = if null ts then 330*sm else if curTime*1000 >= (realToFrac $ offset (head ts)) then 330*(-100)*sm/(realToFrac $ beatLength (head ts)) else sliderRate' (tail ts)
+
+parseFile :: FilePath -> T.Text -> BOsu
 parseFile path content = case parse beatmap path content of
-    Left  e -> (0, [], [])
+    Left  e -> Game {}
     Right b -> let sm = sliderMultiplier b in case sm of
-        Nothing -> (1.4, timingPoints b, hitObjects b)
-        Just a -> (realToFrac a, timingPoints b, hitObjects b)
+        Nothing -> game
+        Just a -> game {curSM = realToFrac a}
+        where game = Game
+                { allObjs = hitObjects b
+                , timing = timingPoints b
+                , elapsedTime = -0.25
+                , curSM = 1.4
+                , cursorLoc = (256, 192)
+                , curObjsToHit = []
+                , otherCircs = []
+                , hitMiss = (0, (0,0), None)
+                }
 
-windowDisplay :: Display
-windowDisplay = InWindow "BOsu" (1080, 720) (50, 50)
+getVisibleObjs :: Float -> BOsu -> [HitObject]
+getVisibleObjs curTime game = filter isVisible (allObjs game) where
+    (sm, tps) = (curSM game, timing game)
+    isVisible ho = case details ho of
+        Spinner endtime -> getSec ho - 0.5 <= curTime + 0.5 && fromIntegral endtime / 1000 >= curTime
+        HitCircle -> getSec ho - 0.5 <= curTime && getSec ho >= curTime
+        Slider _ info pLength -> getSec ho - 0.5 <= curTime && getSec ho + addTime >= curTime
+            where addTime = (fromIntegral $ repeats info)*(realToFrac pLength)/(sliderRate (getSec ho) sm tps)
 
-toFloatPair :: (Int, Int) -> Vector
-toFloatPair (a, b) = (fromIntegral a, fromIntegral b)
-
-toVec :: [Obmapp.Beatmap.Point] -> [Vector]
-toVec xs = map toFloatPair xs
-
-getHitObjects :: Float -> BInfo -> [Picture]
-getHitObjects t (sm, tps, hitObjs) = map renderHObj hitObjs where
+renderHitObjects :: BOsu -> [Picture]
+renderHitObjects game = let (sm, tps, hitObjs) = (curSM game, timing game, curObjsToHit game) in map renderHObj hitObjs where
     renderHObj ho = case details ho of
         HitCircle -> hCircle (position ho) 30
         Spinner _ -> hCircle (256, 192) 300
@@ -69,15 +98,9 @@ getHitObjects t (sm, tps, hitObjs) = map renderHObj hitObjs where
                 where newHead = (toFloatPair $ position ho):(toVec $ head points)
             Perfect a b -> drawArc (reCenter $ toFloatPair $ position ho) (reCenter $ toFloatPair a) (reCenter $ toFloatPair b)
 
-getVisibleObjs :: Float -> BInfo -> [HitObject]
-getVisibleObjs curTime (sm, tps, hitObjs) = filter isVisible hitObjs where
-    isVisible ho = case details ho of
-        Spinner endtime -> getSec ho - 0.5 <= curTime + 0.5 && fromIntegral endtime / 1000 >= curTime
-        HitCircle -> getSec ho - 0.5 <= curTime && getSec ho >= curTime
-        Slider _ info pLength -> getSec ho - 0.5 <= curTime && getSec ho + (fromIntegral $ repeats info)*(realToFrac pLength)/(sliderRate (getSec ho) sm tps) >= curTime
-
-getSliderball :: Float -> BInfo -> [Picture]
-getSliderball curTime (sm, tps, hitObjs) = map renderSlider hitObjs where
+makeSliderball :: Float -> BOsu -> [Picture]
+makeSliderball curTime game = map renderSlider (curObjsToHit game) where
+    (sm, tps) = (curSM game, timing game)
     renderSlider ho = case details ho of
         Slider shape info pLength -> case shape of
             Linear points -> makeSliderball ho $ getPathBezier (realToFrac pLength) $ [(toFloatPair $ position ho):(toVec points)]
@@ -93,7 +116,7 @@ getSliderball curTime (sm, tps, hitObjs) = map renderSlider hitObjs where
                         else (path'' (n-1)) ++ path'
                     path = V.fromList $ path'' $ repeats info
                     lPath = V.length $ path
-                    lastsFor = (fromIntegral $ repeats info)*(realToFrac pLength :: Float) / (sliderRate curTime sm tps)
+                    lastsFor = (fromIntegral $ repeats info)*(realToFrac pLength :: Float) / (sliderRate (getSec ho) sm tps)
                     deltaT = lastsFor / (fromIntegral lPath)
                     curIdx = let t = curTime - getSec ho in if t >= 0 then min (floor $ t/deltaT) (lPath - 1) else 0
                     (curX, curY) = case path V.!? curIdx of
@@ -104,27 +127,62 @@ getSliderball curTime (sm, tps, hitObjs) = map renderSlider hitObjs where
                         True -> Pictures [sliderBall, Translate (curX-256) (curY-192) $ Color (greyN 0.75) $ ThickCircle 60 2.5]
                         _ -> sliderBall
         _ -> Blank
-    
--- reCenter :: HitObject -> HitObject
--- reCenter p@(HitObject {position = (x, y)}) = p {position = (x - 256, y - 192)}
 
-animationFunc :: BInfo -> Float -> Picture
-animationFunc binfo t = Pictures (hitCircles ++ approachCircs ++ sliderBall)
-    where
-        (sm, tps, hitObjs) = binfo 
-        visibleObjs = getVisibleObjs t binfo
-        sliderBall = getSliderball t (sm, tps, visibleObjs)
-        hitCircles = getHitObjects t (sm, tps, visibleObjs)
-        approachCircs = map (getApprachCirc) visibleObjs
-        getApprachCirc ho = let r = (max 1 (1.0 + 2.0 * (getSec ho - t) / 0.5)) in
+makeApproachCirc :: Float -> BOsu -> [Picture]
+makeApproachCirc curTime game = map makeApproachCirc' (curObjsToHit game)
+    where makeApproachCirc' ho = let r = (max 1 (1.0 + 2.0 * (getSec ho - curTime) / 0.5)) in
             case details ho of
                 Spinner _ -> Blank
                 _ -> if r == 1 then Blank else aCircle (position ho) (30.0 * r)
 
-test = do
-    let (a, b, c) = ((100,-100), (200, 0), (100, 100)) in
-        display windowDisplay black $ Pictures [hCircle (256, 192) 300, Color red $ Line $ getCirclePath a b c, Color white $ Line [a, b, c]]
--- $ getCirclePath (1, 1) (0, 2) (-1, 1)
+renderHit :: HitType -> Picture
+renderHit ht = case ht of
+    H300 -> Color (bright blue) $ text "300"
+    H100 -> Color green $ text "100"
+    H50 -> Color azure $ text "50"
+    Miss -> Color red $ text "miss"
+    None -> Blank
+
+checkHit :: Vector -> BOsu -> HitType
+checkHit (x, y) game = let curObjs = curObjsToHit game in 
+    case map getHit curObjs of
+        [] -> None
+        x:xs -> x
+    where
+        curTime = elapsedTime game
+        getHit ho
+            | abs (curTime - getSec ho) < 0.05 && isInCircle ho = H300
+            | abs (curTime - getSec ho) < 0.1 && isInCircle ho = H100
+            | abs (curTime - getSec ho) < 0.2 && isInCircle ho = H50
+            | abs (curTime - getSec ho) < 0.4 = Miss
+            | otherwise = None
+        isInCircle ho = distSqr (toFloatPair $ position ho) (x + 256, y + 192) <= 40 ** 2
+
+handleInput :: Event -> BOsu -> BOsu
+handleInput (EventMotion pos) game = game {cursorLoc = pos, hitMiss = (elapsedTime game, (0,0), None)}
+handleInput (EventKey (Char c) _ _ pos) game = if c == 'z' || c == 'x'
+    then game {hitMiss = (elapsedTime game, pos, checkHit pos game)}
+    else game
+handleInput _ game = game
+
+render :: BOsu -> Picture
+render game = Pictures (hitCircles ++ sliderball ++ [cursor, hit])
+    where
+        cursor = let (x, y) = cursorLoc game in Translate x y $ Color yellow $ circleSolid 10
+        hit = let (hitTime, (x, y), ht) = traceShow (hitMiss game) (hitMiss game) in if elapsedTime game >= hitTime + 0.25 then Blank else
+            Translate x y $ Scale 0.5 0.5 $ renderHit ht
+        hitCircles = renderHitObjects game
+        sliderball = otherCircs game
+
+update :: Float -> BOsu -> BOsu
+update tDelta game = let
+    curTime = elapsedTime game + tDelta
+    game' = game
+        { elapsedTime = curTime
+        , curObjsToHit = getVisibleObjs curTime game }
+    approachCircs = makeApproachCirc curTime game'
+    sliderball = makeSliderball curTime game'
+    in game' {otherCircs = approachCircs ++ sliderball}
 
 main :: IO ()
 main = do
@@ -135,4 +193,4 @@ main = do
     _ <- Mixer.play audio
     file <- T.readFile mp
     let curBMap = parseFile mp file in
-        animateIO windowDisplay black (\t -> return $ animationFunc curBMap t) (\_ -> return ())
+        play windowDisplay black 120 curBMap render handleInput update

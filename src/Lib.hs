@@ -13,6 +13,12 @@ import Graphics.Gloss.Data.Vector
 import qualified Data.Sequence as Seq
 import qualified Data.Geometry.BezierSpline as BS
 
+toFloatPair :: (Int, Int) -> Vector
+toFloatPair (a, b) = (fromIntegral a, fromIntegral b)
+
+toVec :: [(Int, Int)] -> [Vector]
+toVec xs = map toFloatPair xs
+
 distSqr :: Vector -> Vector -> Float
 distSqr (a1, b1) (a2, b2) = (a2 - a1) ** 2 + (b2 - b1) ** 2
 
@@ -37,7 +43,7 @@ aCircle :: (Int, Int) -> Float -> Picture
 aCircle (x, y) r = Translate (fromIntegral x - 256) (fromIntegral y - 192) $ Color white $ ThickCircle r 2.5
 
 lineToCirc :: Vector -> Picture
-lineToCirc (a, b) = Translate a b (Color cyan $ circleSolid 30)
+lineToCirc (a, b) = Translate a b (Color (greyN 0.3) $ circleSolid 30)
 
 makeBezier :: [[Vector]] -> [BS.BezierSpline 1 2 Float]
 makeBezier xxs = map (BS.fromPointSeq . Seq.fromList . map (\(x, y) -> Point2 x y)) xxs
@@ -45,7 +51,6 @@ makeBezier xxs = map (BS.fromPointSeq . Seq.fromList . map (\(x, y) -> Point2 x 
 getBezierPath :: Float -> [[Vector]] -> [Vector]
 getBezierPath pLength xxs = case fromPoints (map ext bPath) of
     Just path -> map ((\p -> (p ^. xCoord, p ^. yCoord)) . (\x -> interpolatePoly x path)) [0..(fromIntegral $ length bPath)]
-    -- [0,(pLength/150)..(fromIntegral $ length bPath)]
     Nothing -> []
     where
         bPath = concat $ map (\x -> map (BS.evaluate x) [0,0.02..1]) $ makeBezier xxs
@@ -62,7 +67,7 @@ getCirclePath a b c = let
     in zip xs ys
 
 drawArc :: Vector -> Vector -> Vector  -> Picture
-drawArc a b c = Color cyan $ Pictures $ map lineToCirc $ getCirclePath a b c
+drawArc a b c = Pictures $ map lineToCirc $ getCirclePath a b c
 
 drawBezier :: Float -> [[Vector]] -> Picture
-drawBezier l ps = Color cyan $ Pictures $ map lineToCirc $ getBezierPath l ps
+drawBezier l ps = Pictures $ map lineToCirc $ getBezierPath l ps
