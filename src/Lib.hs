@@ -1,4 +1,4 @@
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DataKinds, FlexibleContexts, TypeFamilies #-}
 
 module Lib where
 
@@ -17,7 +17,7 @@ toFloatPair :: (Int, Int) -> Vector
 toFloatPair (a, b) = (fromIntegral a, fromIntegral b)
 
 toVec :: [(Int, Int)] -> [Vector]
-toVec xs = map toFloatPair xs
+toVec = map toFloatPair
 
 distSqr :: Vector -> Vector -> Float
 distSqr (a1, b1) (a2, b2) = (a2 - a1) ** 2 + (b2 - b1) ** 2
@@ -45,15 +45,38 @@ aCircle (x, y) r = Translate (fromIntegral x - 256) (fromIntegral y - 192) $ Col
 lineToCirc :: Vector -> Picture
 lineToCirc (a, b) = Translate a b (Color (greyN 0.3) $ circleSolid 30)
 
+makeEquidistant res points = reverse $ helper points []
+    where
+        helper [] acc = acc 
+        helper (p:ps) acc
+            | null acc = helper ps [p]
+            | squaredEuclideanDist p (head acc) > res ** 2 = helper ps (p:acc)
+            | otherwise = helper ps acc 
+
 makeBezier :: [[Vector]] -> [BS.BezierSpline 1 2 Float]
-makeBezier xxs = map (BS.fromPointSeq . Seq.fromList . map (\(x, y) -> Point2 x y)) xxs
+makeBezier = map (BS.fromPointSeq . Seq.fromList . map (uncurry Point2))
+
+-- getBezierPath :: Float -> [[Vector]] -> [Vector]
+-- getBezierPath pLength xxs = case fromPoints (map ext bPath) of
+--     Just path -> map ((\p -> (p ^. xCoord, p ^. yCoord)) . (`interpolatePoly` path)) [0..(fromIntegral $ length bPath)]
+--     Nothing -> []
+--     where
+--         bPath = concatMap (\x -> map (BS.evaluate x) [0,0.02..1]) $ makeBezier xxs
+
+-- getBezierPath :: Float -> [[Vector]] -> [Vector]
+-- getBezierPath pLength xxs = map (\p -> (p ^. xCoord, p ^. yCoord)) $ makeEquidistant 10 bPath
+--     where bPath = concatMap (\x -> map (BS.evaluate x) [0,0.001..1]) $ makeBezier xxs
 
 getBezierPath :: Float -> [[Vector]] -> [Vector]
-getBezierPath pLength xxs = case fromPoints (map ext bPath) of
-    Just path -> map ((\p -> (p ^. xCoord, p ^. yCoord)) . (\x -> interpolatePoly x path)) [0..(fromIntegral $ length bPath)]
-    Nothing -> []
+getBezierPath pLength xxs = map (\p -> (p ^. xCoord, p ^. yCoord)) $ concatMap (reverse . bsEvalEquidistant [0,0.001..1] []) $ makeBezier xxs
     where
-        bPath = concat $ map (\x -> map (BS.evaluate x) [0,0.02..1]) $ makeBezier xxs
+        bsEvalEquidistant [] acc bs = acc
+        bsEvalEquidistant (n:ns) acc bs 
+            | null acc = bsEvalEquidistant ns [newPoint] bs
+            | squaredEuclideanDist newPoint (head acc) > 100 = bsEvalEquidistant ns (newPoint:acc) bs
+            | otherwise = bsEvalEquidistant ns acc bs
+            where
+                newPoint = BS.evaluate bs n :: Data.Geometry.Point 2 Float
 
 getCirclePath :: Vector -> Vector -> Vector -> [Vector]
 getCirclePath a b c = let

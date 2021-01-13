@@ -1,5 +1,6 @@
 .stack-work/
 .vscode/
+beatmap/
 glut32.dll
 src/Obmapp
 stack.yaml.lock
