@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: be6b6c277fed5829ab36c7f5cc9c560599dc725422a27a66e063e1bc3126a2f6
+-- hash: beb862a26b401639ee5e38b228182fd2f31fa997c854d6daa3dfc547fb6e0005
 
 name:           bosu
 version:        0.1.0.0
@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+      Game
       Lib
       Obmapp.Beatmap
       Obmapp.Beatmap.General

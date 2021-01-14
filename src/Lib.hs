@@ -56,17 +56,6 @@ makeEquidistant res points = reverse $ helper points []
 makeBezier :: [[Vector]] -> [BS.BezierSpline 1 2 Float]
 makeBezier = map (BS.fromPointSeq . Seq.fromList . map (uncurry Point2))
 
--- getBezierPath :: Float -> [[Vector]] -> [Vector]
--- getBezierPath pLength xxs = case fromPoints (map ext bPath) of
---     Just path -> map ((\p -> (p ^. xCoord, p ^. yCoord)) . (`interpolatePoly` path)) [0..(fromIntegral $ length bPath)]
---     Nothing -> []
---     where
---         bPath = concatMap (\x -> map (BS.evaluate x) [0,0.02..1]) $ makeBezier xxs
-
--- getBezierPath :: Float -> [[Vector]] -> [Vector]
--- getBezierPath pLength xxs = map (\p -> (p ^. xCoord, p ^. yCoord)) $ makeEquidistant 10 bPath
---     where bPath = concatMap (\x -> map (BS.evaluate x) [0,0.001..1]) $ makeBezier xxs
-
 getBezierPath :: Float -> [[Vector]] -> [Vector]
 getBezierPath pLength xxs = map (\p -> (p ^. xCoord, p ^. yCoord)) $ concatMap (reverse . bsEvalEquidistant [0,0.001..1] []) $ makeBezier xxs
     where
